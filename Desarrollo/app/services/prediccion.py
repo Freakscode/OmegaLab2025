@@ -10,7 +10,8 @@ from ..models import (
     PredictionRequest,
     PredictionResponse,
     StudentPersonalInfo,
-    AcademicHistory
+    AcademicHistory,
+    Institution
 )
 from ..database import get_db
 from sqlalchemy.orm import Session
@@ -39,19 +40,27 @@ class PrediccionService:
             print(f"Error al cargar el modelo: {str(e)}")
             raise
 
+    def _obtener_configuracion_institucion(self, institucion_id: int) -> dict:
+        """Obtiene la configuración específica de la institución."""
+        institucion = self.db.query(Institution).filter(Institution.id == institucion_id).first()
+        if not institucion or not institucion.configuracion:
+            return {}
+        return institucion.configuracion
+
     async def predecir_estres(
         self,
         estudiante_id: int,
         datos_academicos: dict,
         datos_personales: StudentPersonalInfo,
-        historial_academico: List[AcademicHistory]
+        historial_academico: List[AcademicHistory],
+        institucion_id: int
     ) -> PredictionResponse:
         """
         Realiza la predicción de estrés académico para un estudiante usando el modelo Keras.
         """
         try:
             # Preparar los datos para el modelo
-            features = self._preparar_features(datos_academicos, datos_personales, historial_academico)
+            features = self._preparar_features(datos_academicos, datos_personales, historial_academico, institucion_id)
             
             # Preprocesar los datos
             features_procesadas = self.preprocessor.transform(features)
@@ -67,7 +76,8 @@ class PrediccionService:
             factores_riesgo = self._analizar_factores_riesgo(
                 datos_academicos,
                 datos_personales,
-                historial_academico
+                historial_academico,
+                institucion_id
             )
             
             # Crear objeto de predicción
@@ -96,12 +106,14 @@ class PrediccionService:
         self,
         datos_academicos: dict,
         datos_personales: StudentPersonalInfo,
-        historial_academico: List[AcademicHistory]
+        historial_academico: List[AcademicHistory],
+        institucion_id: int
     ) -> np.ndarray:
         """
         Prepara las características para el modelo a partir de los datos del estudiante.
         Las características deben coincidir exactamente con las usadas en el entrenamiento.
         """
+        config = self._obtener_configuracion_institucion(institucion_id)
         features = []
         
         # Características académicas
@@ -121,32 +133,14 @@ class PrediccionService:
             1.0 if datos_personales.medio_transporte == "publico" else 0.0,  # Medio de transporte
             float(datos_personales.año_inscripcion)  # Año de inscripción
         ])
-        
-        # Características del historial académico
-        if historial_academico:
-            # Calcular estadísticas del historial
-            promedios = [h.promedio for h in historial_academico if h.promedio is not None]
-            eventos_negativos = sum(1 for h in historial_academico if "reprobado" in h.evento.lower())
-            eventos_positivos = sum(1 for h in historial_academico if "aprobado" in h.evento.lower())
-            
-            features.extend([
-                float(np.mean(promedios)) if promedios else 0.0,  # Promedio histórico
-                float(np.std(promedios)) if promedios else 0.0,   # Desviación estándar del promedio
-                float(eventos_negativos),  # Eventos negativos
-                float(eventos_positivos)   # Eventos positivos
-            ])
-        else:
-            features.extend([0.0, 0.0, 0.0, 0.0])  # Valores por defecto si no hay historial
-        
-        # Convertir a array numpy y asegurar el formato correcto
-        features_array = np.array(features, dtype=np.float32)
-        
-        # Verificar que no haya valores NaN o infinitos
-        if np.any(np.isnan(features_array)) or np.any(np.isinf(features_array)):
-            raise ValueError("Se detectaron valores NaN o infinitos en las características")
-        
-        # Reshape para el formato esperado por el modelo (1, n_features)
-        return features_array.reshape(1, -1)
+
+        # Aplicar factores de escala específicos de la institución si existen
+        if "factores_escala" in config:
+            for i, factor in enumerate(config["factores_escala"]):
+                if i < len(features):
+                    features[i] *= factor
+
+        return np.array(features)
 
     async def obtener_estudiantes_con_prediccion(self) -> List[Student]:
         """
@@ -166,25 +160,61 @@ class PrediccionService:
         self,
         datos_academicos: dict,
         datos_personales: StudentPersonalInfo,
-        historial_academico: List[AcademicHistory]
+        historial_academico: List[AcademicHistory],
+        institucion_id: int
     ) -> List[str]:
         """
-        Analiza los factores de riesgo basados en los datos del estudiante.
+        Analiza los factores de riesgo basados en los datos del estudiante
+        y las configuraciones específicas de la institución.
         """
+        config = self._obtener_configuracion_institucion(institucion_id)
         factores = []
         
+        # Umbrales personalizados de la institución
+        umbral_carga = config.get("umbral_carga_academica", 18)
+        umbral_reprobacion = config.get("umbral_reprobacion", 2)
+        
         # Análisis de carga académica
-        if datos_academicos.get("creditos_actuales", 0) > 18:
+        if datos_academicos.get("creditos_actuales", 0) > umbral_carga:
             factores.append("Alta carga académica")
             
         # Análisis de rendimiento histórico
         if historial_academico:
             materias_reprobadas = sum(1 for h in historial_academico if h.promedio < 6.0)
-            if materias_reprobadas > 2:
+            if materias_reprobadas > umbral_reprobacion:
                 factores.append("Historial de reprobación")
                 
         # Análisis de situación personal
         if datos_personales.situacion_familiar == "separados":
             factores.append("Situación familiar compleja")
-            
-        return factores 
+
+        # Factores específicos de la institución
+        if "factores_adicionales" in config:
+            for factor in config["factores_adicionales"]:
+                if self._evaluar_factor_adicional(factor, datos_academicos, datos_personales, historial_academico):
+                    factores.append(factor["nombre"])
+
+        return factores
+
+    def _evaluar_factor_adicional(
+        self,
+        factor: dict,
+        datos_academicos: dict,
+        datos_personales: StudentPersonalInfo,
+        historial_academico: List[AcademicHistory]
+    ) -> bool:
+        """Evalúa un factor adicional definido por la institución."""
+        if factor["tipo"] == "academico":
+            valor = datos_academicos.get(factor["campo"], 0)
+        elif factor["tipo"] == "personal":
+            valor = getattr(datos_personales, factor["campo"], None)
+        else:
+            return False
+
+        if factor["operador"] == ">":
+            return valor > factor["valor"]
+        elif factor["operador"] == "<":
+            return valor < factor["valor"]
+        elif factor["operador"] == "==":
+            return valor == factor["valor"]
+        return False 

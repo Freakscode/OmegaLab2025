@@ -1,25 +1,42 @@
-# Usa una imagen base oficial de Python
-FROM python:3.11-slim
+# Usar una imagen base de Python
+FROM python:3.12-slim
 
-# Establece el directorio de trabajo
+# Establecer variables de entorno
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    POETRY_VERSION=1.7.1 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_CREATE=false
+
+# Instalar dependencias del sistema
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl \
+        build-essential \
+        libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instalar Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="${POETRY_HOME}/bin:$PATH"
+
+# Establecer directorio de trabajo
 WORKDIR /app
 
-# Copia el archivo de dependencias
-COPY requirements.txt requirements.txt
+# Copiar archivos de dependencias
+COPY pyproject.toml poetry.lock ./
 
-# Instala las dependencias
-# --no-cache-dir evita guardar caché, útil para mantener la imagen ligera
-# --upgrade pip actualiza pip antes de instalar
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Instalar dependencias
+RUN poetry install --no-interaction --no-ansi --no-root
 
-# Copia el código de la aplicación y los artefactos
-COPY ./app /app/app
-COPY ./artifacts /app/artifacts
+# Copiar el código de la aplicación
+COPY . .
 
-# Expone el puerto en el que corre la aplicación
+# Crear directorios necesarios
+RUN mkdir -p logs artifacts
+
+# Exponer puerto
 EXPOSE 8000
 
-# Comando para correr la aplicación usando Uvicorn
-# host 0.0.0.0 hace que sea accesible desde fuera del contenedor
+# Comando para ejecutar la aplicación
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"] 

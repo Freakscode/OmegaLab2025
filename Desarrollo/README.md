@@ -1,134 +1,140 @@
-l# 💻 Desarrollo – OmegaLab 2025
+# OmegaLab - Sistema de Predicción de Estrés Académico
 
-## ¡Bienvenidos a la carpeta de Desarrollo!
+OmegaLab es un sistema integral para la predicción y gestión del estrés académico en estudiantes universitarios. Utiliza técnicas de aprendizaje automático para predecir niveles de estrés y riesgo de deserción, y proporciona herramientas para administradores y estudiantes.
 
-Aquí se debe subir **todo el material y avances técnicos** que el área de Desarrollo genere durante el reto OmegaLab 2025.
+## Características
 
----
+- **Predicción de Estrés**: Modelo de ML para predecir niveles de estrés y riesgo de deserción.
+- **Gestión de Instituciones**: Soporte para múltiples instituciones educativas con configuraciones personalizadas.
+- **Gestión de Usuarios**: Sistema de autenticación y autorización con roles (ADMIN, STUDENT).
+- **Datos Académicos**: Registro y seguimiento de eventos académicos, actividad en LMS y uso de servicios de apoyo.
+- **Chat Asistente**: Agente conversacional para apoyo a estudiantes.
+- **API RESTful**: Interfaz de programación completa para integración con otros sistemas.
 
-## 🛠️ ¿Qué tipo de contenidos pueden ir aquí?
+## Requisitos
 
-- Código fuente del proyecto
-- Documentación técnica
-- Pruebas y prototipos funcionales
-- Avances de desarrollo y mejoras
-- Cualquier otro recurso relacionado con la parte técnica o de programación
+- Python 3.11+
+- PostgreSQL 15+
+- Docker y Docker Compose (opcional, para despliegue)
 
-> ℹ️ **Nota:** No es necesario seguir un formato exacto, pero es importante mantener el contenido organizado, claro y actualizado para facilitar su revisión.
+## Instalación
 
----
+### Desarrollo Local
 
-¡Mucho éxito programando y creando cosas increíbles! 🚀
+1. Clonar el repositorio:
+   ```bash
+   git clone https://github.com/tu-usuario/omegalab.git
+   cd omegalab
+   ```
 
-# API de Predicción de Estrés Académico
+2. Crear un entorno virtual e instalar dependencias:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # En Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
-Este proyecto implementa una API RESTful usando FastAPI para predecir la probabilidad de estrés académico en estudiantes, basado en un modelo de Machine Learning pre-entrenado.
+3. Configurar variables de entorno:
+   ```bash
+   cp .env.example .env
+   # Editar .env con tus configuraciones
+   ```
+
+4. Inicializar la base de datos:
+   ```bash
+   alembic upgrade head
+   ```
+
+5. Ejecutar la aplicación:
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+### Despliegue con Docker
+
+1. Construir y ejecutar los contenedores:
+   ```bash
+   docker-compose up -d
+   ```
+
+2. Acceder a la aplicación:
+   - API: http://localhost:8000
+   - PgAdmin: http://localhost:5050
 
 ## Estructura del Proyecto
 
 ```
-.
-├── app/                  # Código fuente de la aplicación FastAPI
-│   ├── api/              # Módulos relacionados con la API (endpoints, modelos)
-│   ├── core/             # Configuración central, seguridad
-│   ├── services/         # Lógica de negocio (predicción, carga de modelos)
-│   └── main.py           # Punto de entrada de la aplicación FastAPI
-├── artifacts/            # Artefactos de ML (preprocesador, modelo) - ¡Asegúrate de poner los reales aquí!
-├── tests/                # Tests (unitarios, integración, BDD)
-│   ├── features/         # Archivos .feature (BDD)
-│   └── step_defs/        # Implementación de los steps BDD
-├── .gitignore            # Archivos a ignorar por Git
-├── Dockerfile            # Definición para construir la imagen Docker
-├── README.md             # Este archivo
-└── requirements.txt      # Dependencias Python
+omegalab/
+├── app/
+│   ├── api/
+│   │   └── routes/
+│   ├── core/
+│   ├── models/
+│   ├── services/
+│   └── utils/
+├── artifacts/
+├── logs/
+├── migrations/
+├── tests/
+├── .env.example
+├── .gitignore
+├── docker-compose.yml
+├── Dockerfile
+├── README.md
+└── requirements.txt
 ```
 
-## Requisitos Previos
+## API Endpoints
 
-*   Python 3.10+
-*   Docker (recomendado para ejecución y despliegue consistentes)
-*   Los artefactos `preprocessor_final.joblib` y `model_final_pred.keras` deben existir en el directorio `artifacts/` (los archivos actuales son placeholders).
+### Autenticación
+- `POST /auth/token`: Obtener token de acceso
+- `POST /auth/login`: Iniciar sesión
 
-## Instalación
+### Instituciones
+- `GET /institution`: Listar instituciones
+- `POST /institution`: Crear institución
+- `GET /institution/{id}`: Obtener institución
+- `PUT /institution/{id}`: Actualizar institución
+- `DELETE /institution/{id}`: Eliminar institución
 
-1.  **Clonar el repositorio:**
-    ```bash
-    git clone <url-del-repositorio>
-    cd <nombre-del-directorio>
-    ```
+### Estudiantes
+- `GET /students`: Listar estudiantes
+- `POST /students`: Crear estudiante
+- `GET /students/{id}`: Obtener estudiante
+- `PUT /students/{id}`: Actualizar estudiante
+- `DELETE /students/{id}`: Eliminar estudiante
 
-2.  **Crear y activar un entorno virtual (recomendado):**
-    ```bash
-    python -m venv venv
-    # En Windows (Git Bash/WSL)
-    source venv/bin/activate
-    # En Windows (Command Prompt)
-    # venv\Scripts\activate
-    ```
+### Predicciones
+- `POST /prediccion/estudiante/{id}`: Predecir estrés para un estudiante
+- `GET /prediccion/estudiantes`: Obtener predicciones para todos los estudiantes
+- `GET /prediccion/estudiante/{id}/historial`: Obtener historial de predicciones
 
-3.  **Instalar dependencias:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+### Datos Académicos
+- `POST /academic-data/evento-academico`: Registrar evento académico
+- `POST /academic-data/datos-lms`: Actualizar datos de LMS
+- `POST /academic-data/servicios-apoyo`: Actualizar datos de servicios de apoyo
+- `GET /academic-data/historial/{estudiante_id}`: Obtener historial académico
 
-## Ejecución (Local)
+### Chat
+- `POST /chat/conversacion`: Iniciar conversación
+- `POST /chat/conversacion/{id}/mensaje`: Enviar mensaje
+- `PUT /chat/conversacion/{id}`: Actualizar estado de conversación
+- `GET /chat/conversacion/{id}/historial`: Obtener historial de mensajes
 
-Desde la raíz del proyecto, ejecuta:
+## Contribución
 
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+1. Fork el repositorio
+2. Crear una rama para tu feature (`git checkout -b feature/amazing-feature`)
+3. Commit tus cambios (`git commit -m 'Add some amazing feature'`)
+4. Push a la rama (`git push origin feature/amazing-feature`)
+5. Abrir un Pull Request
 
-*   `--reload`: Recarga automáticamente la aplicación cuando detecta cambios en el código (útil para desarrollo).
-*   `--host 0.0.0.0`: Permite acceder a la API desde otras máquinas en la red local.
-*   `--port 8000`: Puerto en el que correrá la API.
+## Licencia
 
-La API estará disponible en `http://localhost:8000` (o la IP de tu máquina en el puerto 8000).
-La documentación interactiva (Swagger UI) estará en `http://localhost:8000/docs`.
+Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
 
-## Ejecución (Docker)
+## Contacto
 
-1.  **Construir la imagen Docker:**
-    ```bash
-    docker build -t api-estres-academico .
-    ```
+Tu Nombre - [@tutwitter](https://twitter.com/tutwitter) - email@example.com
 
-2.  **Ejecutar el contenedor:**
-    ```bash
-    docker run -d -p 8000:8000 --name api_estres api-estres-academico
-    ```
-    *   `-d`: Ejecuta el contenedor en segundo plano.
-    *   `-p 8000:8000`: Mapea el puerto 8000 del host al puerto 8000 del contenedor.
-    *   `--name api_estres`: Asigna un nombre al contenedor.
-
-La API estará disponible igual que en la ejecución local.
-
-## Ejecución de Tests (BDD)
-
-Asegúrate de tener las dependencias de desarrollo instaladas (`pytest`, `pytest-bdd`, etc., incluidas en `requirements.txt`).
-
-Desde la raíz del proyecto, ejecuta:
-
-```bash
-pytest
-```
-
-Pytest descubrirá y ejecutará los tests definidos en `tests/step_defs/` basados en los features de `tests/features/`.
-
-## Endpoints API
-
-*   `GET /health`: Verifica el estado de la API. Devuelve `{"status": "ok"}`.
-*   `POST /api/v1/predict`: Endpoint principal para obtener predicciones.
-    *   **Request Body:** JSON con una clave `students` que contiene una lista de objetos, cada uno representando un estudiante con sus características (ver `app/api/models.py` para el esquema exacto).
-    *   **Response Body (Éxito - 200 OK):** JSON con una clave `probabilities` que contiene una lista de floats (probabilidad de estrés para cada estudiante en el orden de entrada).
-    *   **Response Body (Error - 400/422/500):** JSON con detalles del error.
-
-## Próximos Pasos / Mejoras
-
-*   Implementar la lógica real de carga de artefactos si se usa S3 u otro almacenamiento.
-*   Implementar la autenticación/autorización (RNF05) en `app/core/security.py` y aplicarla al endpoint `/predict`.
-*   Refinar el manejo de errores y logging (RNF08).
-*   Añadir tests unitarios para `app/services/prediction.py`.
-*   Configurar monitorización (RNF08).
-*   Optimizar el rendimiento y escalabilidad si es necesario (RNF01, RNF02, RNF03).
-*   Configurar HTTPS (RNF05).
+Link del Proyecto: [https://github.com/tu-usuario/omegalab](https://github.com/tu-usuario/omegalab)

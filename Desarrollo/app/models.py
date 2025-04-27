@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text, Enum
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text, Enum, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from pydantic import BaseModel, Field, EmailStr
@@ -14,12 +14,60 @@ class MessageRole(str, enum.Enum):
     ASSISTANT = "assistant"
     SYSTEM = "system"
 
+# Enumeración para el rol de usuario
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    STUDENT = "student"
+
 # Modelos de Base de Datos
+class Institution(Base):
+    __tablename__ = "institutions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(100), nullable=False)
+    codigo = Column(String(20), unique=True, nullable=False)
+    configuracion = Column(JSON, nullable=True)  # Para configuraciones específicas
+    activa = Column(Boolean, default=True)
+    fecha_creacion = Column(DateTime, default=datetime.now)
+    
+    # Relaciones
+    admins = relationship("Admin", back_populates="institucion")
+    estudiantes = relationship("Student", back_populates="institucion")
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(100), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(100), nullable=False)
+    nombre = Column(String(100), nullable=False)
+    rol = Column(Enum(UserRole), nullable=False, default=UserRole.STUDENT)
+    activo = Column(Boolean, default=True)
+    fecha_creacion = Column(DateTime, default=datetime.now)
+    
+    # Relaciones
+    estudiante = relationship("Student", back_populates="usuario", uselist=False)
+    admin = relationship("Admin", back_populates="usuario", uselist=False)
+
+class Admin(Base):
+    __tablename__ = "admins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("users.id"), unique=True)
+    institucion_id = Column(Integer, ForeignKey("institutions.id"), nullable=False)
+    departamento = Column(String(100), nullable=True)
+    permisos = Column(JSON, nullable=True)  # Para almacenar permisos específicos
+    
+    # Relaciones
+    usuario = relationship("User", back_populates="admin")
+    institucion = relationship("Institution", back_populates="admins")
+
 class Student(Base):
     __tablename__ = "students"
 
     id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(100), nullable=False)
+    usuario_id = Column(Integer, ForeignKey("users.id"), unique=True)
+    institucion_id = Column(Integer, ForeignKey("institutions.id"), nullable=False)
     programa = Column(String(100), nullable=False)
     semestre = Column(Integer, nullable=False)
     departamento = Column(String(100))
@@ -27,6 +75,9 @@ class Student(Base):
     riesgo_desercion = Column(Float, default=0.0)
     factores_estres = Column(JSON)
     
+    # Relaciones
+    usuario = relationship("User", back_populates="estudiante")
+    institucion = relationship("Institution", back_populates="estudiantes")
     predicciones = relationship("StressPrediction", back_populates="estudiante")
     historial_academico = relationship("AcademicHistory", back_populates="estudiante")
     conversaciones = relationship("Conversation", back_populates="estudiante")
@@ -81,10 +132,53 @@ class AcademicHistory(Base):
     estudiante = relationship("Student", back_populates="historial_academico")
 
 # Modelos Pydantic para la API
-class ContactInfo(BaseModel):
+class InstitutionBase(BaseModel):
+    nombre: str
+    codigo: str
+    configuracion: Optional[Dict[str, Any]] = None
+
+class InstitutionCreate(InstitutionBase):
+    pass
+
+class InstitutionResponse(InstitutionBase):
+    id: int
+    activa: bool
+    fecha_creacion: datetime
+
+    class Config:
+        orm_mode = True
+
+class UserBase(BaseModel):
     email: EmailStr
-    telefono: str
-    direccion: str
+    nombre: str
+
+class UserCreate(UserBase):
+    password: str
+    rol: UserRole = UserRole.STUDENT
+
+class UserResponse(UserBase):
+    id: int
+    rol: UserRole
+    activo: bool
+    fecha_creacion: datetime
+
+    class Config:
+        orm_mode = True
+
+class AdminBase(BaseModel):
+    departamento: Optional[str] = None
+    permisos: Optional[Dict[str, Any]] = None
+
+class AdminCreate(AdminBase):
+    usuario: UserCreate
+
+class AdminResponse(AdminBase):
+    id: int
+    usuario_id: int
+    usuario: UserResponse
+
+    class Config:
+        orm_mode = True
 
 class StudentPersonalInfo(BaseModel):
     nombre: str
@@ -114,11 +208,15 @@ class AcademicHistoryResponse(BaseModel):
     class Config:
         orm_mode = True
 
-class StudentCreate(BaseModel):
+class Student(BaseModel):
+    id: int
     nombre: str
     programa: str
     semestre: int = Field(..., ge=1, le=10)
     departamento: Optional[str] = None
+    riesgo_estres: float = Field(..., ge=0, le=100)
+    riesgo_desercion: float = Field(..., ge=0, le=100)
+    factores_estres: Optional[List[str]] = None
 
 class StudentResponse(BaseModel):
     id: int
@@ -133,11 +231,10 @@ class StudentResponse(BaseModel):
     class Config:
         orm_mode = True
 
-class StressPredictionCreate(BaseModel):
-    estudiante_id: int
-    nivel_estres: float = Field(..., ge=0, le=1)
-    probabilidad_abandono: float = Field(..., ge=0, le=1)
-    factores_riesgo: List[str]
+class ContactInfo(BaseModel):
+    email: EmailStr
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
 
 class StressPredictionResponse(BaseModel):
     id: int
@@ -150,21 +247,6 @@ class StressPredictionResponse(BaseModel):
     class Config:
         orm_mode = True
 
-class PredictionRequest(BaseModel):
-    estudiante_id: int
-    datos_academicos: Dict[str, Any]
-    datos_personales: StudentPersonalInfo
-    historial_academico: List[AcademicHistoryCreate]
-
-class PredictionResponse(BaseModel):
-    prediccion: StressPredictionResponse
-    probabilidades: List[float]
-
-class MessageCreate(BaseModel):
-    rol: MessageRole
-    contenido: str
-    mensaje_metadata: Optional[Dict[str, Any]] = None
-
 class MessageResponse(BaseModel):
     id: int
     conversacion_id: int
@@ -175,10 +257,6 @@ class MessageResponse(BaseModel):
 
     class Config:
         orm_mode = True
-
-class ConversationCreate(BaseModel):
-    estudiante_id: int
-    contexto: Optional[str] = None
 
 class ConversationResponse(BaseModel):
     id: int
@@ -192,7 +270,13 @@ class ConversationResponse(BaseModel):
     class Config:
         orm_mode = True
 
-class ConversationUpdate(BaseModel):
-    estado: Optional[str] = None
-    contexto: Optional[str] = None
-    fecha_fin: Optional[datetime] = None 
+class PredictionRequest(BaseModel):
+    estudiante_id: int
+    institucion_id: int
+    datos_academicos: dict
+    datos_personales: StudentPersonalInfo
+    historial_academico: List[AcademicHistory]
+
+class PredictionResponse(BaseModel):
+    prediccion: StressPredictionResponse
+    probabilidades: List[float] 
